@@ -153,9 +153,9 @@ func (r *LimitadorClusterEnvoyFilterReconciler) desiredRateLimitingClusterEnvoyF
 	ef.Spec.ConfigPatches = configPatches
 
 	// controller reference
-	if err := r.SetOwnerReference(gw, ef); err != nil {
-		return nil, err
-	}
+	//if err := r.SetOwnerReference(gw, ef); err != nil {
+	//	return nil, err
+	//}
 
 	return ef, nil
 }

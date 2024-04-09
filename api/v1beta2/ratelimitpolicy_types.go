@@ -55,7 +55,6 @@ const (
 	ExcludeOperator    WhenConditionOperator = "excl"
 	MatchesOperator    WhenConditionOperator = "matches"
 
-	RateLimitPolicyBackReferenceAnnotationName   = "kuadrant.io/ratelimitpolicies"
 	RateLimitPolicyDirectReferenceAnnotationName = "kuadrant.io/ratelimitpolicy"
 )
 
@@ -183,7 +182,6 @@ func (s *RateLimitPolicyStatus) Equals(other *RateLimitPolicyStatus, logger logr
 }
 
 var _ kuadrant.Policy = &RateLimitPolicy{}
-var _ kuadrant.Referrer = &RateLimitPolicy{}
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
@@ -267,10 +265,6 @@ func (r *RateLimitPolicy) GetRulesHostnames() (ruleHosts []string) {
 
 func (r *RateLimitPolicy) Kind() string {
 	return r.TypeMeta.Kind
-}
-
-func (r *RateLimitPolicy) BackReferenceAnnotationName() string {
-	return RateLimitPolicyBackReferenceAnnotationName
 }
 
 func (r *RateLimitPolicy) DirectReferenceAnnotationName() string {

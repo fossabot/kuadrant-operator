@@ -165,11 +165,7 @@ func (r *RateLimitPolicyReconciler) reconcileResources(ctx context.Context, rlp 
 	}
 
 	// set direct back ref - i.e. claim the target network object as taken asap
-	if err := r.reconcileNetworkResourceDirectBackReference(ctx, rlp, targetNetworkObject); err != nil {
-		return err
-	}
-
-	return nil
+	return r.reconcileNetworkResourceDirectBackReference(ctx, rlp, targetNetworkObject)
 }
 
 func (r *RateLimitPolicyReconciler) deleteResources(ctx context.Context, rlp *kuadrantv1beta2.RateLimitPolicy, targetNetworkObject client.Object) error {

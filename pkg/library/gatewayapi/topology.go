@@ -34,6 +34,10 @@ func (r *RouteNode) Route() *gatewayapiv1.HTTPRoute {
 	return r.HTTPRoute
 }
 
+func (r *RouteNode) ObjectKey() client.ObjectKey {
+	return client.ObjectKeyFromObject(r.HTTPRoute)
+}
+
 type GatewayNode struct {
 	*gatewayapiv1.Gateway
 

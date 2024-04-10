@@ -22,7 +22,6 @@ import (
 
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -137,40 +136,7 @@ func (r *RateLimitingLimitsReconciler) readRLPs(ctx context.Context, kuadrantNS 
 		return nil, err
 	}
 
-	// When multiple kuadrant instances are supported, this fetching could be targeted to all
-	// gateways for the same kuadrant instance of the reconciled limitador instance
-	gwList := &gatewayapiv1.GatewayList{}
-	// Get all the routes having the gateway as parent
-	err = r.Client().List(ctx, gwList)
-	logger.V(1).Info("topology: list gateways", "#Gateways", len(gwList.Items), "err", err)
-	if err != nil {
-		return nil, err
-	}
-
-	routeList := &gatewayapiv1.HTTPRouteList{}
-	// Get all the routes having the gateway as parent
-	err = r.Client().List(ctx, routeList)
-	logger.V(1).Info("topology: list httproutes", "#HTTPRoutes", len(routeList.Items), "err", err)
-	if err != nil {
-		return nil, err
-	}
-
-	rlpList := &kuadrantv1beta2.RateLimitPolicyList{}
-	// Get all the rate limit policies
-	err = r.Client().List(ctx, rlpList)
-	logger.V(1).Info("topology: list rate limit policies", "#RLPS", len(rlpList.Items), "err", err)
-	if err != nil {
-		return nil, err
-	}
-
-	policies := utils.Map(rlpList.Items, func(p kuadrantv1beta2.RateLimitPolicy) kuadrantgatewayapi.Policy { return &p })
-
-	t, err := kuadrantgatewayapi.NewTopology(
-		kuadrantgatewayapi.WithGateways(utils.Map(gwList.Items, ptr.To)),
-		kuadrantgatewayapi.WithRoutes(utils.Map(routeList.Items, ptr.To)),
-		kuadrantgatewayapi.WithPolicies(policies),
-		kuadrantgatewayapi.WithLogger(logger),
-	)
+	t, err := rlptools.APIGatewayTopology(ctx, r.Client())
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +145,8 @@ func (r *RateLimitingLimitsReconciler) readRLPs(ctx context.Context, kuadrantNS 
 
 	validRLPs := make([]*kuadrantv1beta2.RateLimitPolicy, 0)
 
+	// When multiple kuadrant instances are supported,
+	// gateways will be filtered for the same kuadrant instance of the reconciled limitador instance
 	// Valid gateways are those assigned to the kuadrant instance where the current
 	// limitador CR is living
 	validGateways := utils.Filter(t.Gateways(), func(gwNode kuadrantgatewayapi.GatewayNode) bool {

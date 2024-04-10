@@ -54,8 +54,6 @@ const (
 	IncludeOperator    WhenConditionOperator = "incl"
 	ExcludeOperator    WhenConditionOperator = "excl"
 	MatchesOperator    WhenConditionOperator = "matches"
-
-	RateLimitPolicyDirectReferenceAnnotationName = "kuadrant.io/ratelimitpolicy"
 )
 
 // +kubebuilder:validation:Enum:=second;minute;hour;day

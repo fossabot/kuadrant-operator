@@ -19,24 +19,25 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	gatewayapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	kuadrantv1beta2 "github.com/kuadrant/kuadrant-operator/api/v1beta2"
+	kuadrantgatewayapi "github.com/kuadrant/kuadrant-operator/pkg/library/gatewayapi"
 	"github.com/kuadrant/kuadrant-operator/pkg/library/kuadrant"
 	"github.com/kuadrant/kuadrant-operator/pkg/library/reconcilers"
+	"github.com/kuadrant/kuadrant-operator/pkg/library/utils"
+	"github.com/kuadrant/kuadrant-operator/pkg/rlptools"
 )
-
-const rateLimitPolicyFinalizer = "ratelimitpolicy.kuadrant.io/finalizer"
 
 // RateLimitPolicyReconciler reconciles a RateLimitPolicy object
 type RateLimitPolicyReconciler struct {
 	*reconcilers.BaseReconciler
-	TargetRefReconciler reconcilers.TargetRefReconciler
 }
 
 //+kubebuilder:rbac:groups=kuadrant.io,resources=ratelimitpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -78,59 +79,20 @@ func (r *RateLimitPolicyReconciler) Reconcile(eventCtx context.Context, req ctrl
 		logger.V(1).Info(string(jsonData))
 	}
 
-	markedForDeletion := rlp.GetDeletionTimestamp() != nil
-
-	// fetch the target network object
-	targetNetworkObject, err := reconcilers.FetchTargetRefObject(ctx, r.Client(), rlp.GetTargetRef(), rlp.Namespace)
-	if err != nil {
-		if !markedForDeletion {
-			if apierrors.IsNotFound(err) {
-				logger.V(1).Info("Network object not found. Cleaning up")
-				delResErr := r.deleteResources(ctx, rlp, nil)
-				if delResErr == nil {
-					delResErr = err
-				}
-				return r.reconcileStatus(ctx, rlp, kuadrant.NewErrTargetNotFound(rlp.Kind(), rlp.GetTargetRef(), delResErr))
-			}
-			return ctrl.Result{}, err
-		}
-		targetNetworkObject = nil // we need the object set to nil when there's an error, otherwise deleting the resources (when marked for deletion) will panic
-	}
-
-	// handle authpolicy marked for deletion
-	if markedForDeletion {
-		if controllerutil.ContainsFinalizer(rlp, rateLimitPolicyFinalizer) {
-			logger.V(1).Info("Handling removal of ratelimitpolicy object")
-
-			if err := r.deleteResources(ctx, rlp, targetNetworkObject); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			logger.Info("removing finalizer")
-			if err := r.RemoveFinalizer(ctx, rlp, rateLimitPolicyFinalizer); err != nil {
-				return ctrl.Result{}, err
-			}
-		}
-
+	// Ignore deleted resources, this can happen when foregroundDeletion is enabled
+	// https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/#foreground-cascading-deletion
+	if rlp.GetDeletionTimestamp() != nil {
 		return ctrl.Result{}, nil
 	}
 
-	// add finalizer to the ratelimitpolicy
-	if !controllerutil.ContainsFinalizer(rlp, rateLimitPolicyFinalizer) {
-		controllerutil.AddFinalizer(rlp, rateLimitPolicyFinalizer)
-		if err := r.UpdateResource(ctx, rlp); client.IgnoreNotFound(err) != nil {
-			return ctrl.Result{Requeue: true}, err
-		}
-	}
-
-	// reconcile the ratelimitpolicy spec
-	specErr := r.reconcileResources(ctx, rlp, targetNetworkObject)
+	// perform validations
+	validationErr := r.validate(ctx, rlp)
 
 	// reconcile ratelimitpolicy status
-	statusResult, statusErr := r.reconcileStatus(ctx, rlp, specErr)
+	statusResult, statusErr := r.reconcileStatus(ctx, rlp, validationErr)
 
-	if specErr != nil {
-		return ctrl.Result{}, specErr
+	if validationErr != nil {
+		return ctrl.Result{}, validationErr
 	}
 
 	if statusErr != nil {
@@ -147,8 +109,16 @@ func (r *RateLimitPolicyReconciler) Reconcile(eventCtx context.Context, req ctrl
 }
 
 // validate performs validation before proceeding with the reconcile loop, returning a common.ErrInvalid on failing validation
-func (r *RateLimitPolicyReconciler) validate(rlp *kuadrantv1beta2.RateLimitPolicy, targetNetworkObject client.Object) error {
+func (r *RateLimitPolicyReconciler) validate(ctx context.Context, rlp *kuadrantv1beta2.RateLimitPolicy) error {
 	if err := rlp.Validate(); err != nil {
+		return kuadrant.NewErrInvalid(rlp.Kind(), err)
+	}
+
+	targetNetworkObject, err := reconcilers.FetchTargetRefObject(ctx, r.Client(), rlp.GetTargetRef(), rlp.Namespace)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return kuadrant.NewErrTargetNotFound(rlp.Kind(), rlp.GetTargetRef(), err)
+		}
 		return kuadrant.NewErrInvalid(rlp.Kind(), err)
 	}
 
@@ -156,36 +126,66 @@ func (r *RateLimitPolicyReconciler) validate(rlp *kuadrantv1beta2.RateLimitPolic
 		return kuadrant.NewErrInvalid(rlp.Kind(), err)
 	}
 
-	return nil
-}
-
-func (r *RateLimitPolicyReconciler) reconcileResources(ctx context.Context, rlp *kuadrantv1beta2.RateLimitPolicy, targetNetworkObject client.Object) error {
-	if err := r.validate(rlp, targetNetworkObject); err != nil {
+	// Ensures only one RLP targets the network resource
+	// This validation should be removed when (if) kuadrant supports multiple policies
+	// targeting the same Gateway API network resource
+	if err := r.checkTargetDoublePolicyReference(ctx, rlp); err != nil {
 		return err
 	}
 
-	// set direct back ref - i.e. claim the target network object as taken asap
-	return r.reconcileNetworkResourceDirectBackReference(ctx, rlp, targetNetworkObject)
-}
-
-func (r *RateLimitPolicyReconciler) deleteResources(ctx context.Context, rlp *kuadrantv1beta2.RateLimitPolicy, targetNetworkObject client.Object) error {
-	// remove direct back ref
-	if targetNetworkObject != nil {
-		if err := r.deleteNetworkResourceDirectBackReference(ctx, targetNetworkObject, rlp); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
-// Ensures only one RLP targets the network resource
-func (r *RateLimitPolicyReconciler) reconcileNetworkResourceDirectBackReference(ctx context.Context, policy *kuadrantv1beta2.RateLimitPolicy, targetNetworkObject client.Object) error {
-	return r.TargetRefReconciler.ReconcileTargetBackReference(ctx, policy, targetNetworkObject, policy.DirectReferenceAnnotationName())
-}
+func (r *RateLimitPolicyReconciler) checkTargetDoublePolicyReference(ctx context.Context, rlp *kuadrantv1beta2.RateLimitPolicy) error {
+	t, err := rlptools.APIGatewayTopology(ctx, r.Client())
+	if err != nil {
+		return err
+	}
 
-func (r *RateLimitPolicyReconciler) deleteNetworkResourceDirectBackReference(ctx context.Context, targetNetworkObject client.Object, policy *kuadrantv1beta2.RateLimitPolicy) error {
-	return r.TargetRefReconciler.DeleteTargetBackReference(ctx, targetNetworkObject, policy.DirectReferenceAnnotationName())
+	var attachedPolicies []kuadrantgatewayapi.Policy
+
+	if kuadrantgatewayapi.IsTargetRefGateway(rlp.GetTargetRef()) {
+		// find the node in the topology to be queried for the attached policies
+		gatewayNode, ok := utils.Find(t.Gateways(), func(g kuadrantgatewayapi.GatewayNode) bool {
+			return g.ObjectKey() == rlp.TargetKey()
+		})
+		if !ok {
+			return fmt.Errorf("gateway (%v) not found or not ready", rlp.TargetKey())
+		}
+		attachedPolicies = gatewayNode.AttachedPolicies()
+	} else if kuadrantgatewayapi.IsTargetRefHTTPRoute(rlp.GetTargetRef()) {
+		// find the node in the topology to be queried for the attached policies
+		routeNode, ok := utils.Find(t.Routes(), func(n kuadrantgatewayapi.RouteNode) bool {
+			return n.ObjectKey() == rlp.TargetKey()
+		})
+		if !ok {
+			return fmt.Errorf("httproute (%v) not found or not accepted", rlp.TargetKey())
+		}
+		attachedPolicies = routeNode.AttachedPolicies()
+	}
+
+	if len(attachedPolicies) == 0 {
+		return fmt.Errorf("targetref (%v) does not have attached policies", rlp.TargetKey())
+	}
+
+	if len(attachedPolicies) == 1 {
+		// target is not referenced by another policy
+		return nil
+	}
+
+	// There are at least 2 policies referencing the target network resource
+	// It is still ok if the current policy `rlp` "was" the first one targeting the network resource
+	// The current implementation considers the RLP as the rightful policy targeting the network
+	// resource when
+	// A) the status condition is "accepted"
+	//     OR
+	// B) the status is not accepted and the error is NOT that the target is already being referenced by another policy
+
+	if meta.IsStatusConditionTrue(rlp.Status.Conditions, string(gatewayapiv1alpha2.PolicyConditionAccepted)) {
+		return nil
+	}
+
+	return kuadrant.NewErrConflict(rlp.Kind(), val, fmt.Errorf("the %s target %s is already referenced by policy %s", targetNetworkObjectKind, targetNetworkObjectKey, val))
 }
 
 // SetupWithManager sets up the controller with the Manager.

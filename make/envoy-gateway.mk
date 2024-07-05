@@ -8,7 +8,7 @@ EG_NAMESPACE = envoy-gateway-system
 
 # egctl tool
 EGCTL=$(PROJECT_PATH)/bin/egctl
-EGCTL_VERSION ?= v1.0.0
+EGCTL_VERSION ?= v1.0.2
 
 ifeq ($(ARCH),x86_64)
 	EG_ARCH = amd64
@@ -39,7 +39,7 @@ $(EGCTL):
 .PHONY: egctl
 egctl: $(EGCTL) ## Download egctl locally if necessary.
 
-EG_VERSION ?= v1.0.1
+EG_VERSION ?= v1.0.2
 .PHONY: envoy-gateway-install
 envoy-gateway-install: kustomize $(HELM)
 	$(HELM) install eg oci://docker.io/envoyproxy/gateway-helm --version $(EG_VERSION) -n envoy-gateway-system --create-namespace

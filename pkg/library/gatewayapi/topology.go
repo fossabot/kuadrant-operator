@@ -20,6 +20,11 @@ const (
 	httprouteLabel dag.NodeLabel = dag.NodeLabel("httproute")
 )
 
+type TargetableNode interface {
+	AttachedPolicies() []Policy
+	Object() client.Object
+}
+
 type RouteNode struct {
 	*gatewayapiv1.HTTPRoute
 
@@ -32,6 +37,10 @@ func (r *RouteNode) AttachedPolicies() []Policy {
 
 func (r *RouteNode) Route() *gatewayapiv1.HTTPRoute {
 	return r.HTTPRoute
+}
+
+func (r *RouteNode) Object() client.Object {
+	return r.Route()
 }
 
 type GatewayNode struct {
@@ -52,6 +61,10 @@ func (g *GatewayNode) Routes() []RouteNode {
 
 func (g *GatewayNode) ObjectKey() client.ObjectKey {
 	return client.ObjectKeyFromObject(g.Gateway)
+}
+
+func (g *GatewayNode) Object() client.Object {
+	return g.Gateway
 }
 
 type Topology struct {

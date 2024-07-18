@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	authorinoapi "github.com/kuadrant/authorino/api/v1beta2"
 	. "github.com/onsi/gomega"
 	"sigs.k8s.io/external-dns/endpoint"
 
@@ -629,6 +630,31 @@ func createSelfSignedIssuerSpec() certmanv1.IssuerSpec {
 	return certmanv1.IssuerSpec{
 		IssuerConfig: certmanv1.IssuerConfig{
 			SelfSigned: &certmanv1.SelfSignedIssuer{},
+		},
+	}
+}
+
+func BuildBasicAuthScheme() *kuadrantv1beta2.AuthSchemeSpec {
+	return &kuadrantv1beta2.AuthSchemeSpec{
+		Authentication: map[string]kuadrantv1beta2.AuthenticationSpec{
+			"apiKey": {
+				AuthenticationSpec: authorinoapi.AuthenticationSpec{
+					AuthenticationMethodSpec: authorinoapi.AuthenticationMethodSpec{
+						ApiKey: &authorinoapi.ApiKeyAuthenticationSpec{
+							Selector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{
+									"app": "toystore",
+								},
+							},
+						},
+					},
+					Credentials: authorinoapi.Credentials{
+						AuthorizationHeader: &authorinoapi.Prefixed{
+							Prefix: "APIKEY",
+						},
+					},
+				},
+			},
 		},
 	}
 }

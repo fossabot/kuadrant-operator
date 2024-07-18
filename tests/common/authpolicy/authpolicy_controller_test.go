@@ -100,7 +100,7 @@ var _ = Describe("AuthPolicy controller (Serial)", Serial, func() {
 						Namespace: ptr.To(gatewayapiv1.Namespace(testNamespace)),
 					},
 					Defaults: &api.AuthPolicyCommonSpec{
-						AuthScheme: testBasicAuthScheme(),
+						AuthScheme: tests.BuildBasicAuthScheme(),
 					},
 				},
 			}
@@ -182,7 +182,7 @@ var _ = Describe("AuthPolicy controller", func() {
 					Namespace: ptr.To(gatewayapiv1.Namespace(testNamespace)),
 				},
 				Defaults: &api.AuthPolicyCommonSpec{
-					AuthScheme: testBasicAuthScheme(),
+					AuthScheme: tests.BuildBasicAuthScheme(),
 				},
 			},
 		}
@@ -1205,7 +1205,7 @@ var _ = Describe("AuthPolicy controller", func() {
 				policy.Spec.TargetRef.Name = TestGatewayName
 				policy.Spec.Overrides = &api.AuthPolicyCommonSpec{}
 				policy.Spec.Defaults = nil
-				policy.Spec.Overrides.AuthScheme = testBasicAuthScheme()
+				policy.Spec.Overrides.AuthScheme = tests.BuildBasicAuthScheme()
 				policy.Spec.Overrides.AuthScheme.Authentication["apiKey"].ApiKey.Selector.MatchLabels["admin"] = "yes"
 			})
 
@@ -1242,7 +1242,7 @@ var _ = Describe("AuthPolicy controller", func() {
 				policy.Spec.TargetRef.Name = TestGatewayName
 				policy.Spec.Overrides = &api.AuthPolicyCommonSpec{}
 				policy.Spec.Defaults = nil
-				policy.Spec.Overrides.AuthScheme = testBasicAuthScheme()
+				policy.Spec.Overrides.AuthScheme = tests.BuildBasicAuthScheme()
 				policy.Spec.Overrides.AuthScheme.Authentication["apiKey"].ApiKey.Selector.MatchLabels["admin"] = "yes"
 			})
 
@@ -1272,7 +1272,7 @@ var _ = Describe("AuthPolicy controller", func() {
 				policy.Spec.TargetRef.Name = TestGatewayName
 				policy.Spec.Overrides = &api.AuthPolicyCommonSpec{}
 				policy.Spec.Defaults = nil
-				policy.Spec.Overrides.AuthScheme = testBasicAuthScheme()
+				policy.Spec.Overrides.AuthScheme = tests.BuildBasicAuthScheme()
 				policy.Spec.Overrides.AuthScheme.Authentication["apiKey"].ApiKey.Selector.MatchLabels["admin"] = "yes"
 			})
 
@@ -1326,7 +1326,7 @@ var _ = Describe("AuthPolicy controller", func() {
 				}
 				gatewayPolicy.Spec.Overrides = &api.AuthPolicyCommonSpec{}
 				gatewayPolicy.Spec.Defaults = nil
-				gatewayPolicy.Spec.Overrides.AuthScheme = testBasicAuthScheme()
+				gatewayPolicy.Spec.Overrides.AuthScheme = tests.BuildBasicAuthScheme()
 				gatewayPolicy.Spec.Overrides.AuthScheme.Authentication["apiKey"].ApiKey.Selector.MatchLabels["admin"] = "yes"
 				err = k8sClient.Update(ctx, gatewayPolicy)
 				logf.Log.V(1).Info("Updating AuthPolicy", "key", client.ObjectKeyFromObject(gatewayPolicy).String(), "error", err)
@@ -1355,7 +1355,7 @@ var _ = Describe("AuthPolicy controller", func() {
 				policy.Spec.TargetRef.Name = TestGatewayName
 				policy.Spec.Overrides = &api.AuthPolicyCommonSpec{}
 				policy.Spec.Defaults = nil
-				policy.Spec.Overrides.AuthScheme = testBasicAuthScheme()
+				policy.Spec.Overrides.AuthScheme = tests.BuildBasicAuthScheme()
 				policy.Spec.Overrides.AuthScheme.Authentication["apiKey"].ApiKey.Selector.MatchLabels["admin"] = "yes"
 			})
 
@@ -1374,7 +1374,7 @@ var _ = Describe("AuthPolicy controller", func() {
 					return false
 				}
 				gatewayPolicy.Spec.Overrides = nil
-				gatewayPolicy.Spec.CommonSpec().AuthScheme = testBasicAuthScheme()
+				gatewayPolicy.Spec.CommonSpec().AuthScheme = tests.BuildBasicAuthScheme()
 				gatewayPolicy.Spec.CommonSpec().AuthScheme.Authentication["apiKey"].ApiKey.Selector.MatchLabels["admin"] = "yes"
 				err = k8sClient.Update(ctx, gatewayPolicy)
 				logf.Log.V(1).Info("Updating AuthPolicy", "key", client.ObjectKeyFromObject(gatewayPolicy).String(), "error", err)
@@ -1391,7 +1391,7 @@ var _ = Describe("AuthPolicy controller", func() {
 			routePolicy := policyFactory(func(policy *api.AuthPolicy) {
 				policy.Spec.Overrides = &api.AuthPolicyCommonSpec{}
 				policy.Spec.Defaults = nil
-				policy.Spec.Overrides.AuthScheme = testBasicAuthScheme()
+				policy.Spec.Overrides.AuthScheme = tests.BuildBasicAuthScheme()
 			})
 			err := k8sClient.Create(ctx, routePolicy)
 			logf.Log.V(1).Info("Creating AuthPolicy", "key", client.ObjectKeyFromObject(routePolicy).String(), "error", err)
@@ -1475,7 +1475,7 @@ var _ = Describe("AuthPolicy CEL Validations", func() {
 	Context("Defaults mutual exclusivity validation", func() {
 		It("Valid when only implicit defaults are used", func(ctx SpecContext) {
 			policy := policyFactory(func(policy *api.AuthPolicy) {
-				policy.Spec.AuthScheme = testBasicAuthScheme()
+				policy.Spec.AuthScheme = tests.BuildBasicAuthScheme()
 			})
 			Expect(k8sClient.Create(ctx, policy)).To(Succeed())
 		})
@@ -1483,7 +1483,7 @@ var _ = Describe("AuthPolicy CEL Validations", func() {
 		It("Valid when only explicit defaults are used", func(ctx SpecContext) {
 			policy := policyFactory(func(policy *api.AuthPolicy) {
 				policy.Spec.Defaults = &api.AuthPolicyCommonSpec{
-					AuthScheme: testBasicAuthScheme(),
+					AuthScheme: tests.BuildBasicAuthScheme(),
 				}
 			})
 			Expect(k8sClient.Create(ctx, policy)).To(Succeed())
@@ -1492,7 +1492,7 @@ var _ = Describe("AuthPolicy CEL Validations", func() {
 		It("Invalid when both implicit and explicit defaults are used - authScheme", func(ctx SpecContext) {
 			policy := policyFactory(func(policy *api.AuthPolicy) {
 				policy.Spec.Defaults = &api.AuthPolicyCommonSpec{}
-				policy.Spec.AuthScheme = testBasicAuthScheme()
+				policy.Spec.AuthScheme = tests.BuildBasicAuthScheme()
 			})
 			err := k8sClient.Create(ctx, policy)
 			Expect(err).To(Not(BeNil()))
@@ -1928,28 +1928,3 @@ var _ = Describe("AuthPolicy CEL Validations", func() {
 		})
 	})
 })
-
-func testBasicAuthScheme() *api.AuthSchemeSpec {
-	return &api.AuthSchemeSpec{
-		Authentication: map[string]api.AuthenticationSpec{
-			"apiKey": {
-				AuthenticationSpec: authorinoapi.AuthenticationSpec{
-					AuthenticationMethodSpec: authorinoapi.AuthenticationMethodSpec{
-						ApiKey: &authorinoapi.ApiKeyAuthenticationSpec{
-							Selector: &metav1.LabelSelector{
-								MatchLabels: map[string]string{
-									"app": "toystore",
-								},
-							},
-						},
-					},
-					Credentials: authorinoapi.Credentials{
-						AuthorizationHeader: &authorinoapi.Prefixed{
-							Prefix: "APIKEY",
-						},
-					},
-				},
-			},
-		},
-	}
-}
